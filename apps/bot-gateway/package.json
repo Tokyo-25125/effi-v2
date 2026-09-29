@@ -19,6 +19,7 @@
     "@effi/typescript-config": "workspace:*",
     "@types/node": "catalog:",
     "@types/qrcode": "^1.5.6",
+    "just-bash": "^3.4.2",
     "microsandbox": "^0.6.12",
     "vitest": "catalog:"
   },

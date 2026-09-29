@@ -99,7 +99,7 @@ const globalState = (): GlobalWhatsAppState => {
 };
 
 const authDirectory = process.env.WHATSAPP_AUTH_DIR ?? join(".data", "whatsapp-auth");
-const allowedNumbers = parseWhatsAppAllowedNumbers(process.env.WHATSAPP_ALLOWED_NUMBERS);
+const getAllowedNumbers = (): ReadonlySet<string> => parseWhatsAppAllowedNumbers(process.env.WHATSAPP_ALLOWED_NUMBERS);
 const messageDedupe = new FileMessageDedupe(join(authDirectory, "message-ids.json"));
 const videoObservation = createVideoObservationProvider();
 const statusBoundaryReply = "I can help register a new civic report, but WhatsApp does not provide report or case status. Please describe a new issue to begin.";
@@ -234,10 +234,13 @@ const handleInboundMessage = async (message: WAMessage): Promise<void> => {
   if (!socket || message.key.fromMe === true) return;
   const sender = await resolveAllowedWhatsAppSender({
     jid: message.key.remoteJid,
-    allowedNumbers,
+    allowedNumbers: getAllowedNumbers(),
     getPhoneJidForLid: (lid) => socket.signalRepository.lidMapping.getPNForLID(lid),
   });
-  if (!sender) return;
+  if (!sender) {
+    console.info(`[whatsapp] message from ${message.key.remoteJid} ignored: sender not in WHATSAPP_ALLOWED_NUMBERS`);
+    return;
+  }
   if (!state.from) {
     state.queuedMessages.push(message);
     void bootstrapFrom();
@@ -381,7 +384,7 @@ const connectSocket = async (): Promise<WASocket> => {
   const state = globalState();
   if (state.socket) return state.socket;
   if (state.socketStarting) return state.socketStarting;
-  if (allowedNumbers.size === 0) throw new Error("WHATSAPP_ALLOWED_NUMBERS must contain at least one phone number.");
+  if (getAllowedNumbers().size === 0) throw new Error("WHATSAPP_ALLOWED_NUMBERS must contain at least one phone number.");
 
   state.socketStarting = (async () => {
     const { state: authState, saveCreds } = await useMultiFileAuthState(authDirectory);
@@ -394,6 +397,7 @@ const connectSocket = async (): Promise<WASocket> => {
           (rendered) => console.info(`\n[whatsapp] Scan this QR in WhatsApp > Linked Devices:\n${rendered}`),
           (error) => console.error("Effi WhatsApp QR rendering failed", failureContext("QR rendering", error)),
         );
+        void QRCode.toFile(join(process.cwd(), "whatsapp-qr.png"), qr, { width: 320 }).catch(() => {});
       }
       if (connection === "open") {
         console.info("[whatsapp] connected");
